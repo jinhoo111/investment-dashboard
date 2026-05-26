@@ -168,7 +168,6 @@ tr:hover td{background:#fafafa}
     <button class="nav-tab"     onclick="goPage('news',this)">뉴스</button>
     <button class="nav-tab"     onclick="goPage('research',this)">리서치·규제</button>
     <button class="nav-tab"     onclick="goPage('memo',this)">투자 일지</button>
-    <button class="nav-tab"     onclick="goPage('notion',this)">📋 노션 연동</button>
   </div>
   <div class="nav-right">
     <button class="btn" id="refresh-btn" onclick="refreshAll()">↻</button>
@@ -378,67 +377,6 @@ tr:hover td{background:#fafafa}
       <textarea id="memo-txt" placeholder="오늘의 투자 메모를 남겨보세요..."></textarea>
       <button class="btn" onclick="addMemo()" style="align-self:flex-end;padding:8px 14px">전송</button>
     </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════
-     PAGE 6: 노션 연동 가이드
-═══════════════════════════════════════════ -->
-<div id="page-notion" class="page">
-  <div style="font-size:16px;font-weight:700;margin-bottom:1.25rem">노션 임베드 가이드 — GitHub Pages 방법 (무료·5분)</div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1a1a1a">📌 전체 흐름</div>
-    <div style="font-size:13px;color:#666;line-height:1.8;background:#f8f7f4;border-radius:8px;padding:10px 14px;font-family:monospace">
-      이 HTML 파일 → GitHub에 업로드 → 자동으로 URL 생성 → 노션에 붙여넣기 → 완료
-    </div>
-  </div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px">STEP 1 — GitHub 계정 만들기</div>
-    <div class="step-item"><span class="step-num">1</span><div class="step-content"><a href="https://github.com" target="_blank" style="color:#1e40af;font-weight:600">github.com</a> 접속 → <strong>Sign up</strong> 클릭</div></div>
-    <div class="step-item"><span class="step-num">2</span><div class="step-content">이메일, 비밀번호, 유저네임 입력 후 가입 완료<br><span style="font-size:11px;color:#888">(이미 계정 있으면 STEP 2로 바로 이동)</span></div></div>
-  </div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px">STEP 2 — Repository(저장소) 만들기</div>
-    <div class="step-item"><span class="step-num">1</span><div class="step-content">로그인 후 오른쪽 상단 <strong>+</strong> 버튼 → <strong>New repository</strong></div></div>
-    <div class="step-item"><span class="step-num">2</span><div class="step-content">Repository name: <code>investment-dashboard</code> 입력</div></div>
-    <div class="step-item"><span class="step-num">3</span><div class="step-content"><strong>Public</strong> 선택 (중요! Private이면 노션 임베드 안 됨)</div></div>
-    <div class="step-item"><span class="step-num">4</span><div class="step-content"><strong>Create repository</strong> 클릭</div></div>
-  </div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px">STEP 3 — HTML 파일 업로드</div>
-    <div class="step-item"><span class="step-num">1</span><div class="step-content">생성된 저장소 페이지에서 <strong>Add file → Upload files</strong> 클릭</div></div>
-    <div class="step-item"><span class="step-num">2</span><div class="step-content">이 파일(<code>investment_dashboard.html</code>)을 드래그해서 업로드</div></div>
-    <div class="step-item"><span class="step-num">3</span><div class="step-content">⚠️ 파일명을 반드시 <code>index.html</code>로 바꾸기<br><span style="font-size:11px;color:#888">업로드 전 파일명 변경 또는 업로드 후 rename</span></div></div>
-    <div class="step-item"><span class="step-num">4</span><div class="step-content">하단 <strong>Commit changes</strong> 클릭</div></div>
-  </div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px">STEP 4 — GitHub Pages 켜기</div>
-    <div class="step-item"><span class="step-num">1</span><div class="step-content">저장소 상단 <strong>Settings</strong> 탭 클릭</div></div>
-    <div class="step-item"><span class="step-num">2</span><div class="step-content">왼쪽 사이드바 <strong>Pages</strong> 클릭</div></div>
-    <div class="step-item"><span class="step-num">3</span><div class="step-content">Source: <strong>Deploy from a branch</strong> 선택<br>Branch: <strong>main</strong> / <strong>/ (root)</strong> 선택 → <strong>Save</strong></div></div>
-    <div class="step-item"><span class="step-num">4</span><div class="step-content">1~2분 기다리면 URL이 생성됩니다:<br><code>https://[유저네임].github.io/investment-dashboard/</code></div></div>
-    <div class="highlight-box">✅ 이 URL로 접속하면 대시보드가 실시간으로 작동합니다</div>
-  </div>
-
-  <div class="step-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px">STEP 5 — 노션에 임베드</div>
-    <div class="step-item"><span class="step-num">1</span><div class="step-content">노션 페이지에서 새 블록 추가 (<strong>/</strong> 입력)</div></div>
-    <div class="step-item"><span class="step-num">2</span><div class="step-content"><strong>/embed</strong> 입력 → Embed 블록 선택</div></div>
-    <div class="step-item"><span class="step-num">3</span><div class="step-content">위에서 생성된 GitHub Pages URL 붙여넣기</div></div>
-    <div class="step-item"><span class="step-num">4</span><div class="step-content">블록 크기를 <strong>Full width</strong>로 설정 (오른쪽 ··· 메뉴)</div></div>
-    <div class="highlight-box">🎉 노션 안에서 대시보드가 실시간으로 작동합니다!</div>
-  </div>
-
-  <div class="warn-box">
-    ⚠️ <strong>주의사항</strong><br>
-    • Finnhub API 키는 반드시 재발급 후 사용하세요 (finnhub.io → Dashboard → Regenerate)<br>
-    • 데이터(포트폴리오·메모)는 브라우저 localStorage에 저장 → 다른 기기에서는 초기화됨<br>
-    • 노션 임베드는 HTTPS URL만 가능 (GitHub Pages는 자동 HTTPS ✅)
   </div>
 </div>
 
