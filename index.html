@@ -348,14 +348,23 @@ tr:hover td{background:#fafafa}
     <div class="site-grid" id="site-grid"></div>
   </div>
 
-  <!-- 규제 -->
+  <!-- 규제 RSS 실시간 -->
   <div id="ip-research-reg" class="ipanel">
-    <div class="filter-row" id="reg-filter">
-      <button class="fbtn on" onclick="regFilter('all',this)">전체</button>
-      <button class="fbtn" onclick="regFilter('us',this)">미국</button>
-      <button class="fbtn" onclick="regFilter('kr',this)">한국</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.875rem;flex-wrap:wrap;gap:8px">
+      <div class="filter-row" id="reg-filter" style="margin-bottom:0">
+        <button class="fbtn on" onclick="regFilter('all',this)">전체</button>
+        <button class="fbtn" onclick="regFilter('sec',this)">SEC</button>
+        <button class="fbtn" onclick="regFilter('ftc',this)">FTC</button>
+        <button class="fbtn" onclick="regFilter('doj',this)">DOJ</button>
+        <button class="fbtn" onclick="regFilter('fed',this)">연준</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="dot-live" id="reg-live-dot" style="width:6px;height:6px;border-radius:50%;background:#bbb;display:inline-block"></span>
+        <span id="reg-upd-txt" style="font-size:11px;color:#888">로딩 대기</span>
+        <button class="btn" onclick="loadRegRSS()">↻ 갱신</button>
+      </div>
     </div>
-    <div id="reg-feed"></div>
+    <div id="reg-feed"><div class="empty">↻ 갱신 버튼을 눌러 실시간 규제 뉴스를 불러오세요</div></div>
   </div>
 </div>
 
@@ -434,21 +443,138 @@ function addStock(){
 }
 function removeStock(i){stocks.splice(i,1);renderStocks();}
 
-async function fetchPrices(){
-  const btn=document.getElementById('fetch-btn');btn.disabled=true;btn.textContent='갱신 중...';
-  document.getElementById('price-err').style.display='none';
-  const errors=[];
-  for(let i=0;i<stocks.length;i++){
-    if(!stocks[i].ticker)continue;
-    try{
-      const r=await fetch(PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${stocks[i].ticker}?interval=1d&range=1d`));
-      const o=await r.json();const m=JSON.parse(o.contents)?.chart?.result?.[0]?.meta;
-      if(m?.regularMarketPrice)stocks[i].cur=Math.round(m.regularMarketPrice*100)/100;
-      else errors.push(stocks[i].ticker);
-    }catch(e){errors.push(stocks[i].ticker);}
+// ── 국내 주요 종목 티커 매핑 (한글명 → Yahoo Finance 티커) ──
+const KR_TICKER_MAP = {
+  '삼성전자':'005930.KS','삼성전자우':'005935.KS',
+  'sk하이닉스':'000660.KS','SK하이닉스':'000660.KS',
+  'lg에너지솔루션':'373220.KS','LG에너지솔루션':'373220.KS',
+  '삼성바이오로직스':'207940.KS','현대차':'005380.KS','현대자동차':'005380.KS',
+  '기아':'000270.KS','기아차':'000270.KS','셀트리온':'068270.KS',
+  'POSCO홀딩스':'005490.KS','포스코홀딩스':'005490.KS','포스코':'005490.KS',
+  'LG화학':'051910.KS','lg화학':'051910.KS',
+  '삼성SDI':'006400.KS','삼성sdi':'006400.KS',
+  'KB금융':'105560.KS','kb금융':'105560.KS',
+  '신한지주':'055550.KS','하나금융지주':'086790.KS',
+  '카카오':'035720.KS','카카오뱅크':'323410.KS','카카오페이':'377300.KS',
+  '네이버':'035420.KS','NAVER':'035420.KS',
+  'LG전자':'066570.KS','lg전자':'066570.KS',
+  '현대모비스':'012330.KS','삼성물산':'028260.KS',
+  '한국전력':'015760.KS','KT':'030200.KS','kt':'030200.KS',
+  'SK텔레콤':'017670.KS','sk텔레콤':'017670.KS',
+  'LG디스플레이':'034220.KS','SK이노베이션':'096770.KS',
+  '두산에너빌리티':'034020.KS','한화에어로스페이스':'012450.KS',
+  '크래프톤':'259960.KS','엔씨소프트':'036570.KS','넷마블':'251270.KS',
+  '카카오게임즈':'293490.KS','펄어비스':'263750.KS',
+  '삼성전기':'009150.KS','SK스퀘어':'402340.KS',
+  '현대건설':'000720.KS','GS건설':'006360.KS',
+  '롯데케미칼':'011170.KS','금호석유':'011780.KS',
+  '아모레퍼시픽':'090430.KS','LG생활건강':'051900.KS',
+  '코스맥스':'192820.KS','한미약품':'128940.KS',
+  '유한양행':'000100.KS','녹십자':'006280.KS',
+};
+
+// 미국 주요 종목 한글 → 영문 티커
+const US_TICKER_MAP = {
+  '엔비디아':'NVDA','nvidia':'NVDA','NVIDIA':'NVDA',
+  '애플':'AAPL','apple':'AAPL',
+  '마이크로소프트':'MSFT','microsoft':'MSFT',
+  '구글':'GOOGL','알파벳':'GOOGL','google':'GOOGL',
+  '아마존':'AMZN','amazon':'AMZN',
+  '메타':'META','meta':'META','페이스북':'META',
+  '테슬라':'TSLA','tesla':'TSLA',
+  'AMD':'AMD','amd':'AMD',
+  'TSMC':'TSM','tsmc':'TSM',
+  '브로드컴':'AVGO','broadcom':'AVGO',
+  '퀄컴':'QCOM','qualcomm':'QCOM',
+  '인텔':'INTC','intel':'INTC',
+  '넷플릭스':'NFLX','netflix':'NFLX',
+  '팔란티어':'PLTR','palantir':'PLTR',
+  '코인베이스':'COIN','coinbase':'COIN',
+  '마이크론':'MU','micron':'MU',
+  'JP모건':'JPM','jpmorgan':'JPM',
+  '골드만삭스':'GS','goldman':'GS',
+  '버크셔해서웨이':'BRK-B',
+  '존슨앤존슨':'JNJ','비자':'V','visa':'V',
+  '마스터카드':'MA','mastercard':'MA',
+  '스타벅스':'SBUX','나이키':'NKE','nike':'NKE',
+  '월마트':'WMT','walmart':'WMT',
+};
+
+// 종목명 → 티커 자동 변환
+function resolveTickerFromName(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  // 이미 티커 형식이면 그대로 (영문+숫자, 6자리 숫자.KS 등)
+  if (/^[A-Z]{1,5}(-[A-Z])?$/.test(trimmed)) return trimmed;
+  if (/^\d{6}(\.KS|\.KQ)?$/.test(trimmed)) return trimmed.includes('.') ? trimmed : trimmed + '.KS';
+  // 매핑 테이블 검색 (대소문자 무시)
+  const lower = trimmed.toLowerCase();
+  for (const [k, v] of Object.entries(KR_TICKER_MAP)) {
+    if (k.toLowerCase() === lower) return v;
   }
-  renderStocks();btn.disabled=false;btn.textContent='↻ 현재가 갱신';
-  if(errors.length){const el=document.getElementById('price-err');el.style.display='block';el.textContent='조회 실패: '+errors.join(', ')+' (국내 종목은 005930.KS 형식 필요)';}
+  for (const [k, v] of Object.entries(US_TICKER_MAP)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return null;
+}
+
+// Yahoo Finance 실시간 검색으로 티커 자동 찾기
+async function searchTickerFromYahoo(name) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(name)}&lang=ko-KR&region=KR&quotesCount=3&newsCount=0`;
+    const r = await fetch(PROXY + encodeURIComponent(url));
+    const o = await r.json();
+    const data = JSON.parse(o.contents);
+    const quotes = data?.quotes;
+    if (!quotes?.length) return null;
+    // 주식 타입만 필터 (ETF, 인덱스 제외)
+    const stock = quotes.find(q => q.quoteType === 'EQUITY') || quotes[0];
+    return stock?.symbol || null;
+  } catch(e) { return null; }
+}
+
+async function fetchPrices() {
+  const btn = document.getElementById('fetch-btn');
+  btn.disabled = true; btn.textContent = '갱신 중...';
+  document.getElementById('price-err').style.display = 'none';
+  const errors = [], notFound = [];
+
+  for (let i = 0; i < stocks.length; i++) {
+    const s = stocks[i];
+    // 1. 티커 결정: 저장된 티커 → 매핑 테이블 → Yahoo 검색
+    let ticker = s.ticker;
+    if (!ticker || ticker.trim() === '') {
+      ticker = resolveTickerFromName(s.name);
+    }
+    if (!ticker) {
+      // Yahoo Finance 자동 검색
+      ticker = await searchTickerFromYahoo(s.name);
+      if (ticker) stocks[i].ticker = ticker; // 찾으면 자동 저장
+    }
+    if (!ticker) { notFound.push(s.name); continue; }
+
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+      const r = await fetch(PROXY + encodeURIComponent(url));
+      const o = await r.json();
+      const m = JSON.parse(o.contents)?.chart?.result?.[0]?.meta;
+      if (m?.regularMarketPrice) {
+        stocks[i].cur = Math.round(m.regularMarketPrice * 100) / 100;
+        if (!stocks[i].ticker) stocks[i].ticker = ticker;
+      } else {
+        errors.push(`${s.name}(${ticker})`);
+      }
+    } catch(e) { errors.push(`${s.name}(${ticker})`); }
+  }
+
+  renderStocks();
+  btn.disabled = false; btn.textContent = '↻ 현재가 갱신';
+
+  const msgs = [];
+  if (notFound.length) msgs.push(`티커 미확인: ${notFound.join(', ')}`);
+  if (errors.length) msgs.push(`조회 실패: ${errors.join(', ')}`);
+  const el = document.getElementById('price-err');
+  if (msgs.length) { el.style.display = 'block'; el.textContent = msgs.join(' | '); }
 }
 
 // ── CAPTURE ──
@@ -649,19 +775,79 @@ function renderSites(){
   document.getElementById('site-grid').innerHTML=data.map(s=>`<a href="${s.url}" target="_blank" rel="noopener" class="site-card"><div class="sc-top"><div class="sc-name">${s.name}</div><span class="pill" style="background:${s.bc};color:${s.bcc}">${s.badge}</span></div><div class="sc-desc">${s.desc}</div></a>`).join('');
 }
 
-// ── REGULATION ──
-const REG=[
-  {r:'us',rl:'미국',title:'DOJ, 구글 크롬·안드로이드 강제 분리 검토',body:'2025년 반독점 판결 후속. 크롬 분리 또는 안드로이드 라이선싱 제한 2가지 옵션.',status:'진행중',sc:'#991b1b',sb:'#fee2e2',agency:'DOJ',date:'2026.05.20',risk:4},
-  {r:'us',rl:'미국',title:'SEC, 비트코인 현물 ETF 옵션 거래 조건부 승인',body:'나스닥 QBTC 상장 예정. CME CF Bitcoin Real Time Index 기준 현금결제.',status:'승인',sc:'#166534',sb:'#dcfce7',agency:'SEC',date:'2026.05.22',risk:1},
-  {r:'us',rl:'미국',title:'FTC, AI 모델 훈련 데이터 저작권 조사 착수',body:'OpenAI·Google·Meta 대상. AI 개발 비용 상승 리스크. 결론까지 6~18개월.',status:'조사중',sc:'#92400e',sb:'#fef3c7',agency:'FTC',date:'2026.05.15',risk:3},
-  {r:'kr',rl:'한국',title:'공정위, 카카오 계열사 과징금 1,200억 확정',body:'카카오모빌리티·카카오페이 내부거래 부당지원 인정. 역대 플랫폼 최대.',status:'확정',sc:'#991b1b',sb:'#fee2e2',agency:'공정위',date:'2026.05.19',risk:4},
-  {r:'kr',rl:'한국',title:'금융위, 가상자산업법 2단계 시행',body:'기관투자자 코인 직접투자 허용 확대. 스테이블코인 발행 인가제 도입.',status:'시행',sc:'#1e40af',sb:'#dbeafe',agency:'금융위',date:'2026.05.01',risk:2},
+// ── REGULATION RSS ──
+const REG_FEEDS = [
+  {key:'sec', name:'SEC', label:'미국', url:'https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&dateb=&owner=include&count=15&search_text=&output=atom', color:'#1e40af', bg:'#dbeafe'},
+  {key:'ftc', name:'FTC', label:'미국', url:'https://www.ftc.gov/feeds/press-release.xml', color:'#991b1b', bg:'#fee2e2'},
+  {key:'doj', name:'DOJ', label:'미국', url:'https://www.justice.gov/feed/atom/news', color:'#166534', bg:'#dcfce7'},
+  {key:'fed', name:'연준', label:'미국', url:'https://www.federalreserve.gov/feeds/press_all.xml', color:'#5b21b6', bg:'#ede9fe'},
 ];
-let regCurFilter='all';
-function regFilter(cat,btn){regCurFilter=cat;document.querySelectorAll('#reg-filter .fbtn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderReg();}
-function renderReg(){
-  let data=REG;if(regCurFilter==='us')data=data.filter(d=>d.r==='us');else if(regCurFilter==='kr')data=data.filter(d=>d.r==='kr');
-  document.getElementById('reg-feed').innerHTML=data.map(d=>`<div class="reg-card"><div class="reg-head"><div class="reg-title">${d.title}</div><span class="reg-status" style="background:${d.sb};color:${d.sc}">${d.status}</span></div><div class="reg-body">${d.body}</div><div class="reg-foot"><span>${d.agency}</span><span>${d.date}</span><span style="padding:1px 7px;border-radius:20px;background:${d.r==='us'?'#dbeafe':'#dcfce7'};color:${d.r==='us'?'#1e40af':'#166534'}">${d.rl}</span><span>리스크 ${'★'.repeat(d.risk)}${'☆'.repeat(5-d.risk)}</span></div></div>`).join('');
+let regCurFilter='all', regAllItems=[];
+
+async function loadRegRSS() {
+  const feed = document.getElementById('reg-feed');
+  const dot = document.getElementById('reg-live-dot');
+  const txt = document.getElementById('reg-upd-txt');
+  feed.innerHTML = '<div class="empty"><span class="spin">⟳</span> 실시간 규제 뉴스 로딩 중...</div>';
+  dot.style.background = '#d97706';
+  txt.textContent = '로딩 중...';
+  regAllItems = [];
+  const results = await Promise.allSettled(
+    REG_FEEDS.map(async feed => {
+      const r = await fetch(PROXY + encodeURIComponent(feed.url));
+      const d = await r.json();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(d.contents, 'text/xml');
+      const entries = Array.from(xml.querySelectorAll('entry, item')).slice(0, 8);
+      return entries.map(el => ({
+        key: feed.key,
+        source: feed.name,
+        label: feed.label,
+        color: feed.color,
+        bg: feed.bg,
+        title: el.querySelector('title')?.textContent?.trim() || '',
+        summary: (el.querySelector('summary, description')?.textContent || '').replace(/<[^>]+>/g,'').trim().slice(0,180),
+        link: el.querySelector('link')?.textContent?.trim() || el.querySelector('link')?.getAttribute('href') || '#',
+        date: el.querySelector('updated, pubDate')?.textContent?.trim() || '',
+      }));
+    })
+  );
+  results.forEach(r => { if(r.status === 'fulfilled') regAllItems.push(...r.value); });
+  regAllItems.sort((a,b) => new Date(b.date) - new Date(a.date));
+  dot.style.background = regAllItems.length ? '#0a8a57' : '#d63031';
+  dot.style.animation = regAllItems.length ? 'pulse 2s infinite' : 'none';
+  txt.textContent = regAllItems.length ? '업데이트: ' + new Date().toLocaleTimeString('ko-KR') : '로드 실패';
+  renderReg();
+}
+
+function regFilter(cat, btn) {
+  regCurFilter = cat;
+  document.querySelectorAll('#reg-filter .fbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderReg();
+}
+function renderReg() {
+  const feed = document.getElementById('reg-feed');
+  let data = regCurFilter === 'all' ? regAllItems : regAllItems.filter(d => d.key === regCurFilter);
+  if (!data.length) {
+    feed.innerHTML = '<div class="empty">↻ 갱신 버튼을 눌러 실시간 규제 뉴스를 불러오세요</div>';
+    return;
+  }
+  feed.innerHTML = data.map(d => {
+    const t = d.date ? new Date(d.date).toLocaleString('ko-KR', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="reg-card">
+      <div class="reg-head">
+        <div class="reg-title"><a href="${d.link}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;hover:underline">${d.title}</a></div>
+        <span class="reg-status" style="background:${d.bg};color:${d.color}">${d.source}</span>
+      </div>
+      <div class="reg-body">${d.summary || '내용 없음'}</div>
+      <div class="reg-foot">
+        <span>${d.source}</span>
+        <span>${t}</span>
+        <span style="padding:1px 7px;border-radius:20px;background:${d.bg};color:${d.color}">${d.label}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── MEMO ──
