@@ -431,15 +431,63 @@ function renderStocks(){
   tb.innerHTML=stocks.map((s,i)=>{
     const v=s.cur*s.qty,r=(s.cur-s.buy)/s.buy*100,w=tv?v/tv*100:0;
     const bc=s.status==='buy'?'background:#dcfce7;color:#166534':s.status==='hold'?'background:#fef3c7;color:#92400e':'background:#dbeafe;color:#1e40af';
-    return`<tr><td style="font-weight:600">${s.name}</td><td style="font-size:11px;color:#888;font-family:monospace">${s.ticker}</td><td>${Number(s.buy).toLocaleString()}</td><td style="font-weight:600">${Number(s.cur).toLocaleString()}</td><td>${s.qty}</td><td>${Math.round(v).toLocaleString()}</td><td class="${r>=0?'up':'down'}" style="font-weight:600">${(r>=0?'+':'')+r.toFixed(2)}%</td><td>${w.toFixed(1)}%</td><td><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;${bc}">${s.status==='buy'?'매수':s.status==='hold'?'보유':'관심'}</span></td><td><button onclick="removeStock(${i})" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:16px;line-height:1">×</button></td></tr>`;
+    const stateTag = s.marketState ? `<span style="font-size:9px;color:#aaa;margin-left:3px">${s.marketState}</span>` : '';
+    return`<tr><td style="font-weight:600">${s.name}</td><td style="font-size:11px;color:#888;font-family:monospace">${s.ticker}</td><td>${Number(s.buy).toLocaleString()}</td><td style="font-weight:600">${Number(s.cur).toLocaleString()}${stateTag}</td><td>${s.qty}</td><td>${Math.round(v).toLocaleString()}</td><td class="${r>=0?'up':'down'}" style="font-weight:600">${(r>=0?'+':'')+r.toFixed(2)}%</td><td>${w.toFixed(1)}%</td><td><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;${bc}">${s.status==='buy'?'매수':s.status==='hold'?'보유':'관심'}</span></td><td><button onclick="removeStock(${i})" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:16px;line-height:1">×</button></td></tr>`;
   }).join('');
   localStorage.setItem('pf_s',JSON.stringify(stocks));
 }
-function addStock(){
-  const n=document.getElementById('fn').value.trim(),t=document.getElementById('ft').value.trim(),b=parseFloat(document.getElementById('fb').value),c=parseFloat(document.getElementById('fc').value),q=parseInt(document.getElementById('fq').value),s=document.getElementById('fs').value;
-  if(!n||isNaN(b)||isNaN(c)||isNaN(q))return;
-  stocks.push({name:n,ticker:t,buy:b,cur:c,qty:q,status:s});renderStocks();
+async function addStock(){
+  const n=document.getElementById('fn').value.trim();
+  const t=document.getElementById('ft').value.trim();
+  const b=parseFloat(document.getElementById('fb').value);
+  const q=parseInt(document.getElementById('fq').value)||1;
+  const s=document.getElementById('fs').value;
+  if(!n||isNaN(b))return;
+
+  // 현재가: 입력값 없으면 0으로 추가 후 자동 갱신
+  let cur = parseFloat(document.getElementById('fc').value);
+  if(isNaN(cur)) cur = 0;
+
+  // 티커: 입력값 없으면 종목명으로 자동 추론
+  let ticker = t || resolveTickerFromName(n) || n.toUpperCase();
+
+  stocks.push({name:n, ticker:ticker, buy:b, cur:cur, qty:q, status:s});
+  renderStocks();
   ['fn','ft','fb','fc','fq'].forEach(id=>document.getElementById(id).value='');
+
+  // 현재가가 0이면 자동으로 갱신 시도
+  if(cur === 0){
+    const lastIdx = stocks.length - 1;
+    const btn = document.getElementById('fetch-btn');
+    btn.textContent = '현재가 조회 중...'; btn.disabled = true;
+    // 방금 추가한 종목만 조회
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=2d`;
+      const r = await fetch(PROXY + encodeURIComponent(url));
+      const o = await r.json();
+      const m = JSON.parse(o.contents)?.chart?.result?.[0]?.meta;
+      if(m){
+        const state = m.marketState || 'CLOSED';
+        let price = m.regularMarketPrice;
+        let stateLabel = '종가';
+        if(state === 'PRE' && m.preMarketPrice){ price = m.preMarketPrice; stateLabel = '프리장'; }
+        else if(state === 'POST' && m.postMarketPrice){ price = m.postMarketPrice; stateLabel = '애프터장'; }
+        else if(state === 'REGULAR'){ stateLabel = '실시간'; }
+        stocks[lastIdx].cur = Math.round(price * 100) / 100;
+        stocks[lastIdx].marketState = stateLabel;
+        stocks[lastIdx].ticker = ticker;
+        renderStocks();
+      } else {
+        // Yahoo 직접 안되면 Finnhub 시도
+        if(FKEY){
+          const r2 = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FKEY}`);
+          const d2 = await r2.json();
+          if(d2?.c){ stocks[lastIdx].cur = d2.c; renderStocks(); }
+        }
+      }
+    } catch(e){}
+    btn.textContent = '↻ 현재가 갱신'; btn.disabled = false;
+  }
 }
 function removeStock(i){stocks.splice(i,1);renderStocks();}
 
@@ -629,7 +677,30 @@ async function loadCrypto(){
   }catch(e){document.getElementById('idx-crypto').innerHTML='<div style="font-size:12px;color:#d63031;padding:8px">CoinGecko 오류</div>';}
 }
 async function loadYahoo(sym){
-  try{const r=await fetch(PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`));const o=await r.json();const m=JSON.parse(o.contents)?.chart?.result?.[0]?.meta;if(!m)return null;return{val:m.regularMarketPrice,chg:m.previousClose?((m.regularMarketPrice-m.previousClose)/m.previousClose*100):null};}catch(e){return null;}
+  try{
+    const r=await fetch(PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`));
+    const o=await r.json();
+    const m=JSON.parse(o.contents)?.chart?.result?.[0]?.meta;
+    if(!m)return null;
+    // 장 상태에 따라 실시간 가격 선택
+    const state = m.marketState || 'CLOSED';
+    let price = m.regularMarketPrice;
+    let stateLabel = '';
+    if(state === 'PRE' && m.preMarketPrice){
+      price = m.preMarketPrice;
+      stateLabel = ' 🌅프리';
+    } else if(state === 'POST' && m.postMarketPrice){
+      price = m.postMarketPrice;
+      stateLabel = ' 🌙애프터';
+    } else if(state === 'REGULAR'){
+      stateLabel = ' 🟢실시간';
+    } else {
+      stateLabel = ' 종가';
+    }
+    const prev = m.previousClose || m.chartPreviousClose;
+    const chg = prev ? ((price - prev) / prev * 100) : null;
+    return { val: price, chg, state, stateLabel };
+  }catch(e){return null;}
 }
 async function loadGroup(items,elId,sec){
   const res=await Promise.allSettled(items.map(i=>loadYahoo(i.s)));
@@ -637,7 +708,13 @@ async function loadGroup(items,elId,sec){
     const d=res[i].status==='fulfilled'?res[i].value:null;
     if(!d)return`<div class="idx-card"><div class="idx-sec">${sec}</div><div class="idx-name">${item.n}</div><div class="idx-val neu">—</div></div>`;
     const cls=d.chg==null?'neu':d.chg>=0?'up':'down';
-    return`<div class="idx-card"><div class="idx-sec">${sec}</div><div class="idx-name">${item.n}</div><div class="idx-val ${cls}">${d.val>=1000?d.val.toLocaleString(undefined,{maximumFractionDigits:0}):d.val.toFixed(2)}</div>${d.chg!=null?`<div class="idx-chg ${cls}">${d.chg>=0?'▲':'▼'} ${Math.abs(d.chg).toFixed(2)}%</div>`:''}</div>`;
+    const fmt=d.val>=1000?d.val.toLocaleString(undefined,{maximumFractionDigits:0}):d.val.toFixed(2);
+    return`<div class="idx-card">
+      <div class="idx-sec">${sec}<span style="font-size:9px;color:#aaa;margin-left:4px">${d.stateLabel||''}</span></div>
+      <div class="idx-name">${item.n}</div>
+      <div class="idx-val ${cls}">${fmt}</div>
+      ${d.chg!=null?`<div class="idx-chg ${cls}">${d.chg>=0?'▲':'▼'} ${Math.abs(d.chg).toFixed(2)}%</div>`:''}
+    </div>`;
   }).join('');
 }
 async function loadAllIndices(){
